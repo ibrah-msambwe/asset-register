@@ -18,6 +18,7 @@ import { useDevices, type DeviceType, type DeviceStatus } from "@/context/device
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { toast } from "sonner"
 
 const normalizeDeviceType = (input: string): DeviceType | undefined => {
   if (!input) return undefined;
@@ -102,6 +103,7 @@ export default function EditDevicePage() {
     department: "",
     warranty: "",
   })
+  const [assetNumber, setAssetNumber] = useState<string>("")
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
   const [notFound, setNotFound] = useState(false)
@@ -119,6 +121,7 @@ export default function EditDevicePage() {
           department: device.department || "",
           warranty: device.warranty || "",
         })
+        setAssetNumber(device.assetNumber || "Not Assigned")
       } else {
         setNotFound(true)
       }
@@ -156,6 +159,12 @@ export default function EditDevicePage() {
         ...normalizedData,
         dateAssigned: normalizedData.assignedTo ? new Date().toISOString().split("T")[0] : null,
       })
+      
+      toast.success("Device updated successfully! 🫡", {
+        description: "The device information has been saved.",
+        duration: 3000,
+      })
+      
       router.push("/devices")
     } catch (err: any) {
       setFormError(err.message || "Failed to update device")
@@ -254,6 +263,23 @@ export default function EditDevicePage() {
                     <div className="space-y-4">
                       <h3 className="text-lg font-medium">Device Information</h3>
                       <div className="grid gap-4 md:grid-cols-2">
+                        <div className="space-y-2">
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Label htmlFor="assetNumber" aria-label="Asset Number">Asset Number</Label>
+                            </TooltipTrigger>
+                            <TooltipContent>System-generated asset number. Cannot be changed.</TooltipContent>
+                          </Tooltip>
+                          <Input
+                            id="assetNumber"
+                            value={assetNumber}
+                            disabled
+                            readOnly
+                            className="bg-gray-100 cursor-not-allowed font-semibold text-blue-600"
+                            aria-label="Asset Number"
+                          />
+                          <p className="text-xs text-muted-foreground">Cannot be modified</p>
+                        </div>
                         <div className="space-y-2">
                           <Tooltip>
                             <TooltipTrigger asChild>

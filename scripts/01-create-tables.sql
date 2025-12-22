@@ -6,9 +6,13 @@ CREATE TABLE IF NOT EXISTS devices (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   type VARCHAR(50) NOT NULL,
   serial_number VARCHAR(100) NOT NULL UNIQUE,
+  asset_number VARCHAR(20),
+  model_number VARCHAR(100),
   assigned_to VARCHAR(100),
   status VARCHAR(50) NOT NULL,
   date_assigned DATE,
+  department VARCHAR(100),
+  warranty VARCHAR(100),
   notes TEXT,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
@@ -19,6 +23,7 @@ CREATE INDEX IF NOT EXISTS idx_devices_type ON devices(type);
 CREATE INDEX IF NOT EXISTS idx_devices_status ON devices(status);
 CREATE INDEX IF NOT EXISTS idx_devices_assigned_to ON devices(assigned_to);
 CREATE INDEX IF NOT EXISTS idx_devices_serial_number ON devices(serial_number);
+CREATE INDEX IF NOT EXISTS idx_devices_asset_number ON devices(asset_number);
 CREATE INDEX IF NOT EXISTS idx_devices_created_at ON devices(created_at);
 
 -- Create a function to automatically update the updated_at column

@@ -9,6 +9,7 @@ export type DeviceStatus = "Active" | "Available" | "Maintenance" | "Inactive"
 
 export interface Device {
   id: string
+  assetNumber?: string
   type: DeviceType
   serialNumber: string
   modelNumber?: string
@@ -46,6 +47,7 @@ const DeviceContext = createContext<DeviceContextType | undefined>(undefined)
 const initialDevices: Device[] = [
   {
     id: "1",
+    assetNumber: "HD0001",
     type: "Computer",
     serialNumber: "COMP-001-2024",
     modelNumber: "OptiPlex 7090",
@@ -56,6 +58,7 @@ const initialDevices: Device[] = [
   },
   {
     id: "2",
+    assetNumber: "HD0002",
     type: "Printer",
     serialNumber: "PRNT-002-2024",
     modelNumber: "LaserJet Pro",
@@ -66,6 +69,7 @@ const initialDevices: Device[] = [
   },
   {
     id: "3",
+    assetNumber: "HD0003",
     type: "Scanner",
     serialNumber: "SCAN-003-2024",
     assignedTo: "John Doe",
@@ -75,6 +79,7 @@ const initialDevices: Device[] = [
   },
   {
     id: "4",
+    assetNumber: "HD0004",
     type: "SIM Card",
     serialNumber: "SIM-004-2024",
     assignedTo: "Sarah Wilson",
@@ -84,6 +89,7 @@ const initialDevices: Device[] = [
   },
   {
     id: "5",
+    assetNumber: "HD0005",
     type: "Office Phone",
     serialNumber: "PHONE-005-2024",
     assignedTo: "John Doe",
@@ -93,6 +99,7 @@ const initialDevices: Device[] = [
   },
   {
     id: "6",
+    assetNumber: "HD0006",
     type: "Computer",
     serialNumber: "COMP-006-2024",
     assignedTo: "",
@@ -102,6 +109,7 @@ const initialDevices: Device[] = [
   },
   {
     id: "7",
+    assetNumber: "HD0007",
     type: "Printer",
     serialNumber: "PRNT-007-2024",
     assignedTo: "Michael Brown",
@@ -111,6 +119,7 @@ const initialDevices: Device[] = [
   },
   {
     id: "8",
+    assetNumber: "HD0008",
     type: "Scanner",
     serialNumber: "SCAN-008-2024",
     assignedTo: "",
@@ -120,6 +129,7 @@ const initialDevices: Device[] = [
   },
   {
     id: "9",
+    assetNumber: "HD0009",
     type: "Pocket Wifi",
     serialNumber: "POCKET-009-2024",
     modelNumber: "Huawei E5577",
@@ -143,6 +153,7 @@ export function DeviceProvider({ children }: { children: React.ReactNode }) {
   // Map database fields to our frontend model
   const mapDbDeviceToDevice = (dbDevice: any): Device => ({
     id: dbDevice.id,
+    assetNumber: dbDevice.asset_number || undefined,
     type: dbDevice.type as DeviceType,
     serialNumber: dbDevice.serial_number,
     modelNumber: dbDevice.model_number,
@@ -154,9 +165,190 @@ export function DeviceProvider({ children }: { children: React.ReactNode }) {
     warranty: dbDevice.warranty || "",
   })
 
+  // Generate next asset number (HD0001, HD0002, etc. up to HD1000) - checks all devices to avoid duplicates
+  const generateNextAssetNumber = async (): Promise<string> => {
+    try {
+      // Collect all existing asset numbers from both state and database
+      const existingNumbers: number[] = []
+
+      // Get numbers from current devices state
+      devices.forEach(d => {
+        if (d.assetNumber && d.assetNumber.startsWith('HD')) {
+          const match = d.assetNumber.match(/HD(\d+)/)
+          if (match) {
+            const num = parseInt(match[1], 10)
+            if (num > 0 && num <= 1000) {
+              existingNumbers.push(num)
+            }
+          }
+        }
+      })
+
+      // Query database for all asset numbers to ensure no duplicates
+      if (supabaseConfigured && !isUsingMockData && !needsTableSetup) {
+        try {
+          const { data, error } = await supabase
+            .from("devices")
+            .select("asset_number")
+
+          if (!error && data) {
+            data.forEach((item: any) => {
+              if (item.asset_number && item.asset_number.startsWith('HD')) {
+                const match = item.asset_number.match(/HD(\d+)/)
+                if (match) {
+                  const num = parseInt(match[1], 10)
+                  if (num > 0 && num <= 1000 && !existingNumbers.includes(num)) {
+                    existingNumbers.push(num)
+                  }
+                }
+              }
+            })
+          }
+        } catch (dbErr) {
+          console.error("Error fetching asset numbers from database:", dbErr)
+        }
+      }
+
+      // Find the maximum number and generate next (up to 1000)
+      const maxNumber = existingNumbers.length > 0 ? Math.max(...existingNumbers) : 0
+      let nextNumber = maxNumber + 1
+      
+      // Ensure we don't exceed 1000
+      if (nextNumber > 1000) {
+        // Find the first available number below 1000
+        for (let i = 1; i <= 1000; i++) {
+          if (!existingNumbers.includes(i)) {
+            nextNumber = i
+            break
+          }
+        }
+        // If all numbers 1-1000 are taken, throw error
+        if (nextNumber > 1000) {
+          throw new Error("Maximum asset number limit (HD1000) reached. Please contact administrator.")
+        }
+      }
+      
+      return `HD${String(nextNumber).padStart(4, '0')}`
+    } catch (err) {
+      console.error("Error generating asset number:", err)
+      // Fallback: generate based on device count
+      const count = devices.length
+      const nextNum = Math.min(count + 1, 1000)
+      return `HD${String(nextNum).padStart(4, '0')}`
+    }
+  }
+
+  // Assign asset numbers to devices that don't have them
+  const assignMissingAssetNumbers = async (deviceList: Device[]): Promise<Device[]> => {
+    const devicesNeedingNumbers = deviceList.filter(d => !d.assetNumber || d.assetNumber.trim() === "")
+    
+    if (devicesNeedingNumbers.length === 0) {
+      return deviceList
+    }
+
+    // Get all existing asset numbers from current list
+    const existingNumbers: number[] = []
+    deviceList.forEach(d => {
+      if (d.assetNumber && d.assetNumber.startsWith('HD')) {
+        const match = d.assetNumber.match(/HD(\d+)/)
+        if (match) {
+          const num = parseInt(match[1], 10)
+          if (!existingNumbers.includes(num)) {
+            existingNumbers.push(num)
+          }
+        }
+      }
+    })
+
+    // Query database for all asset numbers to ensure no duplicates
+    if (supabaseConfigured && !isUsingMockData && !needsTableSetup) {
+      try {
+        const { data } = await supabase
+          .from("devices")
+          .select("asset_number")
+
+        if (data) {
+          data.forEach((item: any) => {
+            if (item.asset_number && item.asset_number.startsWith('HD')) {
+              const match = item.asset_number.match(/HD(\d+)/)
+              if (match) {
+                const num = parseInt(match[1], 10)
+                if (!existingNumbers.includes(num)) {
+                  existingNumbers.push(num)
+                }
+              }
+            }
+          })
+        }
+      } catch (err) {
+        console.error("Error fetching asset numbers:", err)
+      }
+    }
+
+    // Assign numbers to devices that need them (up to 1000)
+    let nextNumber = existingNumbers.length > 0 ? Math.max(...existingNumbers) : 0
+    const updatePromises: Promise<any>[] = []
+    const usedNumbers = new Set(existingNumbers)
+    
+    const updatedDevices = deviceList.map(device => {
+      if (!device.assetNumber || device.assetNumber.trim() === "") {
+        // Find next available number (1-1000)
+        nextNumber++
+        while (usedNumbers.has(nextNumber) && nextNumber <= 1000) {
+          nextNumber++
+        }
+        
+        if (nextNumber > 1000) {
+          // Find first available number below 1000
+          for (let i = 1; i <= 1000; i++) {
+            if (!usedNumbers.has(i)) {
+              nextNumber = i
+              break
+            }
+          }
+        }
+        
+        if (nextNumber > 1000) {
+          console.error("Cannot assign asset number: limit reached")
+          return device // Return device without asset number if limit reached
+        }
+        
+        usedNumbers.add(nextNumber)
+        const newAssetNumber = `HD${String(nextNumber).padStart(4, '0')}`
+        
+        // Update in database if configured
+        if (supabaseConfigured && !isUsingMockData && !needsTableSetup) {
+          const updatePromise = supabase
+            .from("devices")
+            .update({ asset_number: newAssetNumber })
+            .eq("id", device.id)
+            .then(({ error }) => {
+              if (error) {
+                console.error(`Error updating asset number for device ${device.id}:`, error)
+              } else {
+                console.log(`Assigned asset number ${newAssetNumber} to device ${device.id}`)
+              }
+            })
+          updatePromises.push(updatePromise)
+        }
+        
+        return { ...device, assetNumber: newAssetNumber }
+      }
+      return device
+    })
+
+    // Wait for all database updates to complete
+    if (updatePromises.length > 0) {
+      await Promise.all(updatePromises)
+    }
+
+    return updatedDevices
+  }
+
   // Map our frontend model to database fields
   const mapDeviceToDbDevice = (device: Partial<Device>) => {
     const dbDevice: any = {}
+    if (device.assetNumber !== undefined) dbDevice.asset_number = device.assetNumber || null
     if (device.type !== undefined) dbDevice.type = device.type
     if (device.serialNumber !== undefined) dbDevice.serial_number = device.serialNumber
     if (device.modelNumber !== undefined) dbDevice.model_number = device.modelNumber
@@ -209,7 +401,9 @@ export function DeviceProvider({ children }: { children: React.ReactNode }) {
       }
 
       const mappedDevices = data.map(mapDbDeviceToDevice)
-      setDevices(mappedDevices)
+      // Assign asset numbers to devices that don't have them
+      const devicesWithAssetNumbers = await assignMissingAssetNumbers(mappedDevices)
+      setDevices(devicesWithAssetNumbers)
       setIsUsingMockData(false)
       setNeedsTableSetup(false)
       setError(null)
@@ -259,10 +453,14 @@ export function DeviceProvider({ children }: { children: React.ReactNode }) {
     try {
       setLoading(true)
 
+      // Generate asset number if not provided
+      const assetNumber = device.assetNumber || await generateNextAssetNumber()
+      const deviceWithAsset = { ...device, assetNumber }
+
       if (!supabaseConfigured || isUsingMockData || needsTableSetup) {
         // Add to mock data
         const newDevice = {
-          ...device,
+          ...deviceWithAsset,
           id: Math.random().toString(36).substring(2, 9),
         }
         setDevices((prev) => [...prev, newDevice])
@@ -270,7 +468,7 @@ export function DeviceProvider({ children }: { children: React.ReactNode }) {
         return
       }
 
-      const dbDevice = mapDeviceToDbDevice(device)
+      const dbDevice = mapDeviceToDbDevice(deviceWithAsset)
       const { data, error } = await supabase.from("devices").insert(dbDevice).select()
 
       if (error) {
@@ -278,7 +476,7 @@ export function DeviceProvider({ children }: { children: React.ReactNode }) {
           // Silently fall back to mock data
           setNeedsTableSetup(true)
           const newDevice = {
-            ...device,
+            ...deviceWithAsset,
             id: Math.random().toString(36).substring(2, 9),
           }
           setDevices((prev) => [...prev, newDevice])

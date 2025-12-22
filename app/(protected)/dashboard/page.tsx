@@ -10,6 +10,8 @@ import { MockDataBanner } from "@/components/mock-data-banner"
 import { ChartContainer } from "@/components/ui/chart"
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts"
 import Link from "next/link"
+import { ArrowRight } from "lucide-react"
+import { Button } from "@/components/ui/button"
 
 export default function Dashboard() {
   const {
@@ -113,12 +115,19 @@ export default function Dashboard() {
     }
     normalizedCategoriesMap[label].count++
   })
-  const normalizedDeviceCategories = Object.entries(normalizedCategoriesMap).map(([label, { count, icon, color }]) => ({
-    type: label,
-    count,
-    icon,
-    color,
-  }))
+  // Sort categories by count (descending) and take top 8
+  const normalizedDeviceCategories = Object.entries(normalizedCategoriesMap)
+    .map(([label, { count, icon, color }]) => ({
+      type: label,
+      count,
+      icon,
+      color,
+    }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 8)
+  
+  // Get total categories count for "View All" button
+  const totalCategoriesCount = Object.keys(normalizedCategoriesMap).length
 
   // Get recent activities from devices
   const recentActivities = devices
@@ -162,109 +171,123 @@ export default function Dashboard() {
 
   return (
     <SidebarInset className="h-full bg-white">
-      <header className="flex h-16 shrink-0 items-center gap-2 border-b px-4 bg-white">
+      <header className="flex h-14 sm:h-16 shrink-0 items-center gap-2 border-b px-3 sm:px-4 bg-white shadow-sm sticky top-0 z-10">
         <SidebarTrigger className="-ml-1" />
-        <Separator orientation="vertical" className="mr-2 h-4" />
-        <div>
-          <h1 className="text-lg font-semibold">Dashboard</h1>
-          <p className="text-xs text-muted-foreground">Hesu Investment Limited</p>
-        </div>
-        <div className="ml-auto">
-          <Link href="/" className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-purple-600 text-white font-semibold shadow hover:bg-purple-700 transition">
-            Back to Landing Page
-          </Link>
+        <Separator orientation="vertical" className="mr-2 h-4 hidden sm:block" />
+        <div className="flex-1 min-w-0">
+          <h1 className="text-base sm:text-lg font-semibold truncate">Dashboard</h1>
+          <p className="text-xs text-muted-foreground truncate">Hesu Investment Limited</p>
         </div>
       </header>
-      <div className="flex flex-1 flex-col gap-6 p-6 bg-white min-h-[calc(100vh-4rem)]">
+      <div className="flex flex-1 flex-col gap-6 p-4 sm:p-6 bg-gradient-to-br from-gray-50 to-white min-h-[calc(100vh-4rem)] overflow-y-auto">
         <MockDataBanner isVisible={isUsingMockData} needsTableSetup={needsTableSetup} error={error} />
 
-        <h2 className="text-2xl font-bold tracking-tight">Asset Overview</h2>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+          <div>
+            <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-gray-900">Asset Overview</h2>
+            <p className="text-xs sm:text-sm text-muted-foreground mt-1">Monitor and manage your asset inventory</p>
+          </div>
+        </div>
 
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-4 sm:gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
           {loading
             ? // Loading skeletons for stats
               Array(4)
                 .fill(0)
                 .map((_, i) => (
-                  <Card key={i} className="overflow-hidden border-none shadow-md bg-white">
-                    <CardHeader className="bg-gray-100 p-4">
+                  <Card key={i} className="overflow-hidden border shadow-lg bg-white hover:shadow-xl transition-shadow">
+                    <CardHeader className="bg-gray-100 p-5">
                       <Skeleton className="h-5 w-24" />
                     </CardHeader>
-                    <CardContent className="p-4 pt-6 bg-white">
+                    <CardContent className="p-5 pt-6 bg-white">
                       <Skeleton className="h-8 w-16 mb-2" />
                       <Skeleton className="h-4 w-32" />
                     </CardContent>
                   </Card>
                 ))
             : stats.map((stat) => (
-                <Card key={stat.title} className="overflow-hidden border-none shadow-md bg-white">
-                  <CardHeader className={`${stat.color} p-4 flex flex-row items-center justify-between space-y-0`}>
-                    <CardTitle className="text-sm font-medium">{stat.title}</CardTitle>
-                    <stat.icon className="h-5 w-5" />
+                <Card key={stat.title} className="overflow-hidden border shadow-lg bg-white hover:shadow-xl transition-all duration-200 hover:-translate-y-1 flex flex-col">
+                  <CardHeader className={`${stat.color} p-4 sm:p-5 flex flex-row items-center justify-between space-y-0`}>
+                    <CardTitle className="text-xs sm:text-sm font-semibold truncate pr-2">{stat.title}</CardTitle>
+                    <stat.icon className="h-5 w-5 sm:h-6 sm:w-6 flex-shrink-0" />
                   </CardHeader>
-                  <CardContent className="p-4 pt-6 bg-white">
-                    <div className="text-3xl font-bold">{stat.value}</div>
-                    <p className="text-xs text-muted-foreground mt-1">{stat.description}</p>
+                  <CardContent className="p-4 sm:p-5 pt-4 sm:pt-6 bg-white flex-1 flex flex-col justify-between">
+                    <div className="text-2xl sm:text-3xl font-bold text-gray-900">{stat.value}</div>
+                    <p className="text-xs text-muted-foreground mt-2 line-clamp-2">{stat.description}</p>
                   </CardContent>
                 </Card>
               ))}
         </div>
 
-        {/* Device Categories Section */}
-        <Card className="border-none shadow-md bg-white">
-          <CardHeader className="pb-2">
-            <CardTitle>Device Categories</CardTitle>
-            <CardDescription>Total number of devices by category</CardDescription>
-          </CardHeader>
-          <CardContent className="bg-white">
-            {loading
-              ? Array(6)
-                  .fill(0)
-                  .map((_, i) => (
-                    <Card key={i} className="overflow-hidden border-none shadow-sm bg-white">
-                      <CardHeader className="bg-gray-100 p-3">
-                        <Skeleton className="h-5 w-20" />
-                      </CardHeader>
-                      <CardContent className="p-3 pt-4 bg-white text-center">
-                        <Skeleton className="h-8 w-8 mx-auto mb-2" />
-                        <Skeleton className="h-4 w-12 mx-auto" />
-                      </CardContent>
-                    </Card>
-                  ))
-              : (
-                <div
-                  className="grid gap-4"
-                  style={{
-                    gridTemplateRows: 'repeat(2, 1fr)',
-                    gridTemplateColumns: `repeat(${Math.ceil(normalizedDeviceCategories.length / 2)}, minmax(0, 1fr))`,
-                  }}
-                >
-                  {normalizedDeviceCategories.map((category) => (
-                    <Card key={category.type} className="overflow-hidden border-none shadow-sm bg-white">
-                      <CardHeader
-                        className={`${category.color} p-3 flex flex-row items-center justify-between space-y-0`}
-                      >
-                        <CardTitle className="text-sm font-medium">{category.type}</CardTitle>
-                        <category.icon className="h-4 w-4" />
-                      </CardHeader>
-                      <CardContent className="p-3 pt-4 bg-white text-center">
-                        <div className="text-2xl font-bold">{category.count}</div>
-                        <p className="text-xs text-muted-foreground mt-1">Devices</p>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
+        {/* Device Categories Section - Only show if there are categories */}
+        {normalizedDeviceCategories.length > 0 && (
+          <Card className="border shadow-lg bg-white">
+            <CardHeader className="pb-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div className="flex-1">
+                <CardTitle className="text-lg sm:text-xl font-semibold">Top Device Categories</CardTitle>
+                <CardDescription className="text-xs sm:text-sm">
+                  {totalCategoriesCount > normalizedDeviceCategories.length 
+                    ? `Showing top ${normalizedDeviceCategories.length} of ${totalCategoriesCount} categories`
+                    : `Total number of devices by category`}
+                </CardDescription>
+              </div>
+              {totalCategoriesCount > normalizedDeviceCategories.length && (
+                <Link href="/devices">
+                  <Button variant="outline" size="sm" className="gap-2 w-full sm:w-auto">
+                    View All Categories
+                    <ArrowRight className="h-4 w-4" />
+                  </Button>
+                </Link>
               )}
-          </CardContent>
-        </Card>
-
-        <div className="grid gap-6 md:grid-cols-2">
-          <Card className="border-none shadow-md bg-white">
-            <CardHeader className="pb-2">
-              <CardTitle>Recent Activity</CardTitle>
-              <CardDescription>Latest device assignments</CardDescription>
             </CardHeader>
             <CardContent className="bg-white">
+              {loading
+                ? (
+                  <div className="grid gap-4 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4">
+                    {Array(8)
+                      .fill(0)
+                      .map((_, i) => (
+                        <Card key={i} className="overflow-hidden border shadow-sm bg-white">
+                          <CardHeader className="bg-gray-100 p-4">
+                            <Skeleton className="h-5 w-20" />
+                          </CardHeader>
+                          <CardContent className="p-4 pt-5 bg-white text-center">
+                            <Skeleton className="h-8 w-8 mx-auto mb-2" />
+                            <Skeleton className="h-4 w-12 mx-auto" />
+                          </CardContent>
+                        </Card>
+                      ))}
+                  </div>
+                )
+                : (
+                  <div className="grid gap-4 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4">
+                    {normalizedDeviceCategories.map((category) => (
+                      <Card key={category.type} className="overflow-hidden border shadow-md bg-white hover:shadow-lg transition-all duration-200 hover:-translate-y-0.5 flex flex-col">
+                        <CardHeader
+                          className={`${category.color} p-3 sm:p-4 flex flex-row items-center justify-between space-y-0`}
+                        >
+                          <CardTitle className="text-xs sm:text-sm font-semibold truncate pr-1">{category.type}</CardTitle>
+                          <category.icon className="h-4 w-4 sm:h-5 sm:w-5 flex-shrink-0" />
+                        </CardHeader>
+                        <CardContent className="p-3 sm:p-4 pt-4 sm:pt-5 bg-white text-center flex-1 flex flex-col justify-center">
+                          <div className="text-xl sm:text-2xl font-bold text-gray-900">{category.count}</div>
+                          <p className="text-xs text-muted-foreground mt-1">Devices</p>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                )}
+            </CardContent>
+          </Card>
+        )}
+
+        <div className="grid gap-4 sm:gap-6 grid-cols-1 md:grid-cols-2">
+          <Card className="border shadow-lg bg-white flex flex-col">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-lg sm:text-xl font-semibold">Recent Activity</CardTitle>
+              <CardDescription className="text-xs sm:text-sm">Latest device assignments</CardDescription>
+            </CardHeader>
+            <CardContent className="bg-white flex-1">
               {loading ? (
                 <div className="space-y-4">
                   {Array(5)
@@ -303,12 +326,12 @@ export default function Dashboard() {
             </CardContent>
           </Card>
 
-          <Card className="border-none shadow-md bg-white">
-            <CardHeader className="pb-2">
-              <CardTitle>Employees with Multiple Devices</CardTitle>
-              <CardDescription>Staff members assigned to multiple devices</CardDescription>
+          <Card className="border shadow-lg bg-white flex flex-col">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-lg sm:text-xl font-semibold">Employees with Multiple Devices</CardTitle>
+              <CardDescription className="text-xs sm:text-sm">Staff members assigned to multiple devices</CardDescription>
             </CardHeader>
-            <CardContent className="bg-white">
+            <CardContent className="bg-white flex-1">
               {loading ? (
                 <div className="space-y-4">
                   {Array(3)

@@ -9,7 +9,8 @@ import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Search, Plus, MoreHorizontal, Edit, Trash2, Loader2, AlertCircle, Upload } from "lucide-react"
+import { Search, Plus, MoreHorizontal, Edit, Trash2, Loader2, AlertCircle, Upload, ChevronLeft, ChevronRight } from "lucide-react"
+import { toast } from "sonner"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { useDevices, type DeviceStatus } from "@/context/device-context"
@@ -83,6 +84,7 @@ export default function DevicesPage() {
 
   const filteredDevices = devices.filter((device) => {
     const matchesSearch =
+      (device.assetNumber || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
       (device.serialNumber || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
       (device.assignedTo || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
       (device.type || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -97,6 +99,7 @@ export default function DevicesPage() {
 
   const getDeviceValue = (device: typeof devices[number], key: string) => {
     switch (key) {
+      case "assetNumber": return device.assetNumber || "";
       case "type": return device.type || "";
       case "serialNumber": return device.serialNumber || "";
       case "assignedTo": return device.assignedTo || "";
@@ -151,9 +154,20 @@ export default function DevicesPage() {
   const confirmDelete = async () => {
     if (confirmDeleteId) {
       setIsDeleting(confirmDeleteId)
-      await deleteDevice(confirmDeleteId)
-      setIsDeleting(null)
-      setConfirmDeleteId(null)
+      try {
+        await deleteDevice(confirmDeleteId)
+        toast.success("Device deleted successfully! 🤗", {
+          description: "The device has been removed from the system.",
+          duration: 3000,
+        })
+      } catch (error) {
+        toast.error("Failed to delete device", {
+          description: "Please try again later.",
+        })
+      } finally {
+        setIsDeleting(null)
+        setConfirmDeleteId(null)
+      }
     }
   }
 
@@ -197,7 +211,7 @@ export default function DevicesPage() {
               <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
-                  placeholder="Search devices, serial numbers, or assigned users..."
+                  placeholder="Search asset numbers, devices, serial numbers, or assigned users..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="pl-10 bg-white"
@@ -264,14 +278,15 @@ export default function DevicesPage() {
             <Table className="font-inter shadow-md rounded-xl border-none bg-white">
               <TableHeader>
                 <TableRow className="bg-blue-50 rounded-t-xl">
-                  <TableHead className="font-bold text-base px-5 py-3">Device Type</TableHead>
-                  <TableHead className="font-bold text-base px-5 py-3">Serial Number</TableHead>
-                  <TableHead className="font-bold text-base px-5 py-3">Assigned To</TableHead>
-                  <TableHead className="font-bold text-base px-5 py-3">Department</TableHead>
-                  <TableHead className="font-bold text-base px-5 py-3">Warranty</TableHead>
-                  <TableHead className="font-bold text-base px-5 py-3">Status</TableHead>
-                  <TableHead className="font-bold text-base px-5 py-3">Date Assigned</TableHead>
-                  <TableHead className="font-bold text-base px-5 py-3">Model Number</TableHead>
+                  <TableHead className="font-bold text-base px-5 py-3 border-r border-dashed border-gray-200">Asset Number</TableHead>
+                  <TableHead className="font-bold text-base px-5 py-3 border-r border-dashed border-gray-200">Device Type</TableHead>
+                  <TableHead className="font-bold text-base px-5 py-3 border-r border-dashed border-gray-200">Serial Number</TableHead>
+                  <TableHead className="font-bold text-base px-5 py-3 border-r border-dashed border-gray-200">Assigned To</TableHead>
+                  <TableHead className="font-bold text-base px-5 py-3 border-r border-dashed border-gray-200">Department</TableHead>
+                  <TableHead className="font-bold text-base px-5 py-3 border-r border-dashed border-gray-200">Warranty</TableHead>
+                  <TableHead className="font-bold text-base px-5 py-3 border-r border-dashed border-gray-200">Status</TableHead>
+                  <TableHead className="font-bold text-base px-5 py-3 border-r border-dashed border-gray-200">Date Assigned</TableHead>
+                  <TableHead className="font-bold text-base px-5 py-3 border-r border-dashed border-gray-200">Model Number</TableHead>
                   <TableHead className="w-[50px] font-bold text-base px-5 py-3"></TableHead>
                 </TableRow>
               </TableHeader>
@@ -282,28 +297,31 @@ export default function DevicesPage() {
                       .fill(0)
                       .map((_, i) => (
                         <TableRow key={i} className="bg-white">
-                          <TableCell>
-                            <Skeleton className="h-5 w-24" />
-                          </TableCell>
-                          <TableCell>
-                            <Skeleton className="h-5 w-32" />
-                          </TableCell>
-                          <TableCell>
-                            <Skeleton className="h-5 w-28" />
-                          </TableCell>
-                          <TableCell>
-                            <Skeleton className="h-5 w-24" />
-                          </TableCell>
-                          <TableCell>
-                            <Skeleton className="h-5 w-24" />
-                          </TableCell>
-                          <TableCell>
+                          <TableCell className="border-r border-dashed border-gray-200">
                             <Skeleton className="h-5 w-20" />
                           </TableCell>
-                          <TableCell>
+                          <TableCell className="border-r border-dashed border-gray-200">
                             <Skeleton className="h-5 w-24" />
                           </TableCell>
-                          <TableCell>
+                          <TableCell className="border-r border-dashed border-gray-200">
+                            <Skeleton className="h-5 w-32" />
+                          </TableCell>
+                          <TableCell className="border-r border-dashed border-gray-200">
+                            <Skeleton className="h-5 w-28" />
+                          </TableCell>
+                          <TableCell className="border-r border-dashed border-gray-200">
+                            <Skeleton className="h-5 w-24" />
+                          </TableCell>
+                          <TableCell className="border-r border-dashed border-gray-200">
+                            <Skeleton className="h-5 w-24" />
+                          </TableCell>
+                          <TableCell className="border-r border-dashed border-gray-200">
+                            <Skeleton className="h-5 w-20" />
+                          </TableCell>
+                          <TableCell className="border-r border-dashed border-gray-200">
+                            <Skeleton className="h-5 w-24" />
+                          </TableCell>
+                          <TableCell className="border-r border-dashed border-gray-200">
                             <Skeleton className="h-5 w-24" />
                           </TableCell>
                           <TableCell>
@@ -313,14 +331,15 @@ export default function DevicesPage() {
                       ))
                   : paginatedDevices.map((device, idx) => (
                       <TableRow key={device.id} className={`transition hover:bg-blue-50 ${idx % 2 === 0 ? 'bg-white' : 'bg-blue-50/40'} rounded-lg px-5 py-3`}>
-                        <TableCell className="px-5 py-3 font-inter text-sm">{device.type ? toTitleCase(device.type) : "Not Available"}</TableCell>
-                        <TableCell className="px-5 py-3 font-inter text-sm">{device.serialNumber ? device.serialNumber : "Not Available"}</TableCell>
-                        <TableCell className="px-5 py-3 font-inter text-sm">{device.assignedTo ? toTitleCase(device.assignedTo) : "Not assigned"}</TableCell>
-                        <TableCell className="px-5 py-3 font-inter text-sm">{device.department ? toTitleCase(device.department) : "Not assigned"}</TableCell>
-                        <TableCell className="px-5 py-3 font-inter text-sm">{device.warranty && device.warranty.trim().toLowerCase() !== "" && device.warranty.trim().toLowerCase() !== "na" ? toTitleCase(device.warranty) : "Not Available"}</TableCell>
-                        <TableCell className="px-5 py-3 font-inter text-sm">{device.status ? getStatusBadge(device.status) : "Not Available"}</TableCell>
-                        <TableCell className="px-5 py-3 font-inter text-sm">{device.dateAssigned ? toTitleCase(device.dateAssigned) : "Not assigned"}</TableCell>
-                        <TableCell className="px-5 py-3 font-inter text-sm">{device.modelNumber ? toTitleCase(device.modelNumber) : "Not Available"}</TableCell>
+                        <TableCell className="px-5 py-3 font-inter text-sm font-semibold text-blue-600 border-r border-dashed border-gray-200">{device.assetNumber || "Not Assigned"}</TableCell>
+                        <TableCell className="px-5 py-3 font-inter text-sm border-r border-dashed border-gray-200">{device.type ? toTitleCase(device.type) : "Not Available"}</TableCell>
+                        <TableCell className="px-5 py-3 font-inter text-sm border-r border-dashed border-gray-200">{device.serialNumber ? device.serialNumber : "Not Available"}</TableCell>
+                        <TableCell className="px-5 py-3 font-inter text-sm border-r border-dashed border-gray-200">{device.assignedTo ? toTitleCase(device.assignedTo) : "Not assigned"}</TableCell>
+                        <TableCell className="px-5 py-3 font-inter text-sm border-r border-dashed border-gray-200">{device.department ? toTitleCase(device.department) : "Not assigned"}</TableCell>
+                        <TableCell className="px-5 py-3 font-inter text-sm border-r border-dashed border-gray-200">{device.warranty && device.warranty.trim().toLowerCase() !== "" && device.warranty.trim().toLowerCase() !== "na" ? toTitleCase(device.warranty) : "Not Available"}</TableCell>
+                        <TableCell className="px-5 py-3 font-inter text-sm border-r border-dashed border-gray-200">{device.status ? getStatusBadge(device.status) : "Not Available"}</TableCell>
+                        <TableCell className="px-5 py-3 font-inter text-sm border-r border-dashed border-gray-200">{device.dateAssigned ? toTitleCase(device.dateAssigned) : "Not assigned"}</TableCell>
+                        <TableCell className="px-5 py-3 font-inter text-sm border-r border-dashed border-gray-200">{device.modelNumber ? toTitleCase(device.modelNumber) : "Not Available"}</TableCell>
                         <TableCell className="px-5 py-3 font-inter text-sm flex gap-2 items-center">
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
@@ -380,16 +399,93 @@ export default function DevicesPage() {
         {/* Pagination controls */}
         {!loading && totalPages > 1 && (
           <div className="flex justify-center items-center gap-2 mt-6">
-            <span className="text-sm text-gray-700 font-medium">Page</span>
-            {Array.from({ length: totalPages }, (_, i) => (
-              <button
-                key={i + 1}
-                onClick={() => setCurrentPage(i + 1)}
-                className={`px-3 py-1 rounded border text-sm font-medium ${currentPage === i + 1 ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-blue-600 border-blue-200 hover:bg-blue-50'}`}
-              >
-                {i + 1}
-              </button>
-            ))}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+              disabled={currentPage === 1}
+              className="gap-1"
+            >
+              <ChevronLeft className="h-4 w-4" />
+              Previous
+            </Button>
+            
+            <div className="flex items-center gap-1">
+              {(() => {
+                const pagesToShow = 5
+                const half = Math.floor(pagesToShow / 2)
+                let start = Math.max(1, currentPage - half)
+                let end = Math.min(totalPages, start + pagesToShow - 1)
+                
+                if (end - start < pagesToShow - 1) {
+                  start = Math.max(1, end - pagesToShow + 1)
+                }
+                
+                const pages = []
+                if (start > 1) {
+                  pages.push(
+                    <button
+                      key={1}
+                      onClick={() => setCurrentPage(1)}
+                      className="px-3 py-1 rounded border text-sm font-medium bg-white text-blue-600 border-blue-200 hover:bg-blue-50"
+                    >
+                      1
+                    </button>
+                  )
+                  if (start > 2) {
+                    pages.push(<span key="ellipsis1" className="px-2 text-gray-500">...</span>)
+                  }
+                }
+                
+                for (let i = start; i <= end; i++) {
+                  pages.push(
+                    <button
+                      key={i}
+                      onClick={() => setCurrentPage(i)}
+                      className={`px-3 py-1 rounded border text-sm font-medium ${
+                        currentPage === i
+                          ? 'bg-blue-600 text-white border-blue-600'
+                          : 'bg-white text-blue-600 border-blue-200 hover:bg-blue-50'
+                      }`}
+                    >
+                      {i}
+                    </button>
+                  )
+                }
+                
+                if (end < totalPages) {
+                  if (end < totalPages - 1) {
+                    pages.push(<span key="ellipsis2" className="px-2 text-gray-500">...</span>)
+                  }
+                  pages.push(
+                    <button
+                      key={totalPages}
+                      onClick={() => setCurrentPage(totalPages)}
+                      className="px-3 py-1 rounded border text-sm font-medium bg-white text-blue-600 border-blue-200 hover:bg-blue-50"
+                    >
+                      {totalPages}
+                    </button>
+                  )
+                }
+                
+                return pages
+              })()}
+            </div>
+            
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+              disabled={currentPage === totalPages}
+              className="gap-1"
+            >
+              Next
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+            
+            <span className="text-sm text-gray-500 ml-4">
+              Page {currentPage} of {totalPages}
+            </span>
           </div>
         )}
 
