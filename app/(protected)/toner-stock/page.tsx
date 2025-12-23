@@ -6,8 +6,8 @@ import { Separator } from "@/components/ui/separator"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Printer, AlertTriangle, CheckCircle, MoreVertical, Edit, Eye, Trash2, Save, Loader2 } from "lucide-react"
-import { useInventory, type TonerColor } from "@/context/inventory-context"
+import { Printer, AlertTriangle, CheckCircle, MoreVertical, Edit, Eye, Trash2, Save, Loader2, Plus } from "lucide-react"
+import { useInventory, type TonerColor, type TonerModel, type TonerType } from "@/context/inventory-context"
 import { useDevices } from "@/context/device-context"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
@@ -19,18 +19,28 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { toast } from "sonner"
 
 export default function TonerStockPage() {
-  const { tonerStock, getLowStockToners, loading, deleteTonerStock, updateTonerStockEntry, getPrinters } = useInventory()
+  const { tonerStock, getLowStockToners, loading, deleteTonerStock, updateTonerStockEntry, getPrinters, createTonerStockEntry } = useInventory()
   const { devices } = useDevices()
   const printers = getPrinters()
   const lowStockToners = getLowStockToners()
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [addStockDialogOpen, setAddStockDialogOpen] = useState(false)
   const [editStock, setEditStock] = useState<any>(null)
   const [editFormData, setEditFormData] = useState({
     currentStock: "",
     lowStockThreshold: "",
-    printerId: "",
+    printerId: "none",
+  })
+  const [addStockFormData, setAddStockFormData] = useState({
+    tonerModel: "",
+    tonerType: "" as TonerType | "",
+    tonerColor: "" as TonerColor | "",
+    printerId: "none",
+    lowStockThreshold: "5",
   })
   const [editLoading, setEditLoading] = useState(false)
+  const [addStockLoading, setAddStockLoading] = useState(false)
+  const [addStockError, setAddStockError] = useState<string | null>(null)
 
   // Helper function to get model number from printer device
   const getPrinterModelNumber = (printerId?: string) => {
@@ -85,7 +95,7 @@ export default function TonerStockPage() {
     setEditFormData({
       currentStock: stock.currentStock.toString(),
       lowStockThreshold: stock.lowStockThreshold.toString(),
-      printerId: stock.printerId || "",
+      printerId: stock.printerId || "none",
     })
     setDialogOpen(true)
   }
@@ -99,7 +109,7 @@ export default function TonerStockPage() {
       await updateTonerStockEntry(editStock.id, {
         currentStock: parseInt(editFormData.currentStock),
         lowStockThreshold: parseInt(editFormData.lowStockThreshold),
-        printerId: editFormData.printerId || undefined,
+        printerId: editFormData.printerId && editFormData.printerId !== "none" ? editFormData.printerId : undefined,
       })
       
       toast.success("Stock Updated", {
@@ -112,7 +122,7 @@ export default function TonerStockPage() {
       setEditFormData({
         currentStock: "",
         lowStockThreshold: "",
-        printerId: "",
+        printerId: "none",
       })
     } catch (error) {
       toast.error("Error", {
@@ -174,6 +184,178 @@ export default function TonerStockPage() {
             <Printer className="h-6 w-6 text-blue-600" />
             <h2 className="text-2xl font-bold">Toner Inventory</h2>
           </div>
+          <Dialog open={addStockDialogOpen} onOpenChange={setAddStockDialogOpen}>
+            <DialogTrigger asChild>
+              <Button className="bg-blue-600 hover:bg-blue-700 text-white">
+                <Plus className="mr-2 h-4 w-4" />
+                Add Stock Entry
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-md">
+              <DialogHeader>
+                <DialogTitle>Add New Toner Stock Entry</DialogTitle>
+                <DialogDescription>
+                  Create a new toner stock entry (without quantity). Quantity will be added when receiving items.
+                </DialogDescription>
+              </DialogHeader>
+              <form onSubmit={async (e) => {
+                e.preventDefault()
+                setAddStockLoading(true)
+                setAddStockError(null)
+
+                if (!addStockFormData.tonerModel) {
+                  setAddStockError("Toner model is required.")
+                  setAddStockLoading(false)
+                  return
+                }
+
+                try {
+                  await createTonerStockEntry(
+                    addStockFormData.tonerModel as TonerModel,
+                    addStockFormData.tonerType === "Color" ? (addStockFormData.tonerColor as TonerColor) : undefined,
+                    addStockFormData.printerId && addStockFormData.printerId !== "none" ? addStockFormData.printerId : undefined,
+                    parseInt(addStockFormData.lowStockThreshold) || 5
+                  )
+                  
+                  toast.success("Stock Entry Created", {
+                    description: `Stock entry for ${addStockFormData.tonerModel} has been created.`,
+                    duration: 3000,
+                  })
+                  
+                  setAddStockDialogOpen(false)
+                  setAddStockFormData({
+                    tonerModel: "",
+                    tonerType: "" as TonerType | "",
+                    tonerColor: "" as TonerColor | "",
+                    printerId: "none",
+                    lowStockThreshold: "5",
+                  })
+                } catch (error: any) {
+                  setAddStockError(error.message || "Failed to create stock entry")
+                } finally {
+                  setAddStockLoading(false)
+                }
+              }}>
+                <div className="space-y-4 py-4">
+                  {addStockError && <div className="text-red-600 text-sm">{addStockError}</div>}
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="addTonerModel">Toner Model *</Label>
+                    <Input
+                      id="addTonerModel"
+                      value={addStockFormData.tonerModel}
+                      onChange={(e) => setAddStockFormData({ ...addStockFormData, tonerModel: e.target.value })}
+                      placeholder="Enter toner model (e.g., HP 85A, Canon 303)"
+                      required
+                    />
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="addTonerType">Toner Type *</Label>
+                    <Select
+                      value={addStockFormData.tonerType}
+                      onValueChange={(value) => setAddStockFormData({ ...addStockFormData, tonerType: value as TonerType, tonerColor: "" as TonerColor | "" })}
+                      required
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select toner type" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Black & White">Black & White</SelectItem>
+                        <SelectItem value="Color">Color</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  
+                  {addStockFormData.tonerType === "Color" && (
+                    <div className="space-y-2">
+                      <Label htmlFor="addTonerColor">Toner Color *</Label>
+                      <Select
+                        value={addStockFormData.tonerColor}
+                        onValueChange={(value) => setAddStockFormData({ ...addStockFormData, tonerColor: value as TonerColor })}
+                        required
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select toner color" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Black">Black</SelectItem>
+                          <SelectItem value="Cyan">Cyan</SelectItem>
+                          <SelectItem value="Magenta">Magenta</SelectItem>
+                          <SelectItem value="Yellow">Yellow</SelectItem>
+                          <SelectItem value="Color Set">Color Set (All 4 colors)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="addPrinter">Assigned Printer</Label>
+                    <Select
+                      value={addStockFormData.printerId}
+                      onValueChange={(value) => setAddStockFormData({ ...addStockFormData, printerId: value })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select printer (optional)" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">None</SelectItem>
+                        {printers.map((printer) => (
+                          <SelectItem key={printer.id} value={printer.id}>
+                            {printer.assetNumber || printer.serialNumber} - {printer.assignedTo || "Unassigned"} {printer.modelNumber ? `(${printer.modelNumber})` : ""}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="addLowStockThreshold">Low Stock Threshold</Label>
+                    <Input
+                      id="addLowStockThreshold"
+                      type="number"
+                      min="0"
+                      value={addStockFormData.lowStockThreshold}
+                      onChange={(e) => setAddStockFormData({ ...addStockFormData, lowStockThreshold: e.target.value })}
+                      required
+                    />
+                  </div>
+                </div>
+                <DialogFooter>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      setAddStockDialogOpen(false)
+                      setAddStockFormData({
+                        tonerModel: "",
+                        tonerType: "" as TonerType | "",
+                        tonerColor: "" as TonerColor | "",
+                        printerId: "none",
+                        lowStockThreshold: "5",
+                      })
+                      setAddStockError(null)
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                  <Button type="submit" disabled={addStockLoading}>
+                    {addStockLoading ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Creating...
+                      </>
+                    ) : (
+                      <>
+                        <Plus className="mr-2 h-4 w-4" />
+                        Create Stock Entry
+                      </>
+                    )}
+                  </Button>
+                </DialogFooter>
+              </form>
+            </DialogContent>
+          </Dialog>
         </div>
 
         {/* Edit Stock Dialog */}
@@ -237,7 +419,7 @@ export default function TonerStockPage() {
                       <SelectValue placeholder="Select printer (optional)" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">None</SelectItem>
+                      <SelectItem value="none">None</SelectItem>
                       {printers.map((printer) => (
                         <SelectItem key={printer.id} value={printer.id}>
                           {printer.assetNumber || printer.serialNumber} - {printer.assignedTo || "Unassigned"}

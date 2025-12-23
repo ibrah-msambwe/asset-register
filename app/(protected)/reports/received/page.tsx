@@ -32,7 +32,8 @@ export default function ReceivedItemsReportsPage() {
         item.itemType.toLowerCase().includes(searchLower) ||
         item.tonerModel?.toLowerCase().includes(searchLower) ||
         item.supplier.toLowerCase().includes(searchLower) ||
-        item.printerName?.toLowerCase().includes(searchLower)
+        item.printerName?.toLowerCase().includes(searchLower) ||
+        item.receivedBy?.toLowerCase().includes(searchLower)
       )
     })()
 
@@ -106,6 +107,7 @@ export default function ReceivedItemsReportsPage() {
           "Supplier",
           "Printer",
           "Received Date",
+          "Received By",
           "Notes"
         ]],
         body: filteredItems.map(item => [
@@ -117,6 +119,7 @@ export default function ReceivedItemsReportsPage() {
           item.supplier,
           item.printerName || "N/A",
           new Date(item.receivedDate).toLocaleDateString(),
+          item.receivedBy || "N/A",
           item.notes || "N/A"
         ]),
         styles: { 
@@ -284,13 +287,14 @@ export default function ReceivedItemsReportsPage() {
                       <TableHead className="font-semibold text-xs px-2 py-3 border-r border-dashed border-gray-200">Supplier</TableHead>
                       <TableHead className="font-semibold text-xs px-2 py-3 border-r border-dashed border-gray-200">Printer</TableHead>
                       <TableHead className="font-semibold text-xs px-2 py-3 border-r border-dashed border-gray-200">Received Date</TableHead>
+                      <TableHead className="font-semibold text-xs px-2 py-3 border-r border-dashed border-gray-200">Received By</TableHead>
                       <TableHead className="font-semibold text-xs px-2 py-3">Notes</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {paginatedItems.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={8} className="text-center py-8 text-gray-500">
+                        <TableCell colSpan={9} className="text-center py-8 text-gray-500">
                           No received items found matching your filters.
                         </TableCell>
                       </TableRow>
@@ -306,6 +310,7 @@ export default function ReceivedItemsReportsPage() {
                           <TableCell className="px-2 py-3 font-inter text-xs truncate border-r border-dashed border-gray-200">{item.supplier}</TableCell>
                           <TableCell className="px-2 py-3 font-inter text-xs truncate border-r border-dashed border-gray-200">{item.printerName || "N/A"}</TableCell>
                           <TableCell className="px-2 py-3 font-inter text-xs truncate border-r border-dashed border-gray-200">{new Date(item.receivedDate).toLocaleDateString()}</TableCell>
+                          <TableCell className="px-2 py-3 font-inter text-xs truncate border-r border-dashed border-gray-200">{item.receivedBy || "N/A"}</TableCell>
                           <TableCell className="px-2 py-3 font-inter text-xs truncate">{item.notes || "N/A"}</TableCell>
                         </TableRow>
                       ))

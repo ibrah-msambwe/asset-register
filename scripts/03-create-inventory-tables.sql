@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS received_items (
   quantity INTEGER NOT NULL CHECK (quantity > 0),
   supplier VARCHAR(255) NOT NULL,
   received_date DATE NOT NULL,
+  received_by VARCHAR(255),
   notes TEXT,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()

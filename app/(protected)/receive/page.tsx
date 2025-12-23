@@ -22,12 +22,24 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 
 export default function ReceiveItemsPage() {
   const router = useRouter()
-  const { addReceivedItem, getPrinters, receivedItems, updateReceivedItem, deleteReceivedItem } = useInventory()
+  const { addReceivedItem, getPrinters, receivedItems, updateReceivedItem, deleteReceivedItem, tonerStock } = useInventory()
   const { devices } = useDevices()
   const [loading, setLoading] = useState(false)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [searchTerm, setSearchTerm] = useState("")
   const printers = getPrinters()
+  
+  // Get available toners from stock for dropdown (only unique models)
+  const availableToners = Array.from(
+    new Map(tonerStock.map((stock) => [stock.model.toLowerCase(), stock])).values()
+  ).map((stock) => ({
+    id: stock.id,
+    model: stock.model,
+    color: stock.color,
+    printerId: stock.printerId,
+    printerName: stock.printerName,
+    displayName: `${stock.model}${stock.color ? ` (${stock.color})` : ""}${stock.printerName ? ` - ${stock.printerName}` : ""}`,
+  }))
   const [formData, setFormData] = useState({
     itemType: "" as ItemType | "",
     tonerModel: "" as TonerModel | "",
@@ -37,6 +49,7 @@ export default function ReceiveItemsPage() {
     quantity: "",
     supplier: "",
     receivedDate: new Date().toISOString().split("T")[0],
+    receivedBy: "",
     notes: "",
   })
   const [formError, setFormError] = useState<string | null>(null)
@@ -77,11 +90,8 @@ export default function ReceiveItemsPage() {
         setLoading(false)
         return
       }
-      if (!formData.printerId) {
-        setFormError("Printer selection is required for toner items.")
-        setLoading(false)
-        return
-      }
+      // Printer selection is optional - toner can be received without assigning to a printer
+      // The toner will be available in stock and can be assigned to any printer when issuing
     }
 
     try {
@@ -93,11 +103,12 @@ export default function ReceiveItemsPage() {
         tonerModel: formData.itemType === "Toner" ? (formData.tonerModel as TonerModel) : undefined,
         tonerType: formData.itemType === "Toner" ? (formData.tonerType as TonerType) : undefined,
         tonerColor: formData.itemType === "Toner" && formData.tonerType === "Color" ? (formData.tonerColor as TonerColor) : undefined,
-        printerId: formData.itemType === "Toner" ? formData.printerId : undefined,
+        printerId: formData.itemType === "Toner" ? (formData.printerId && formData.printerId !== "none" ? formData.printerId : undefined) : undefined,
         printerName: formData.itemType === "Toner" && selectedPrinter ? `${selectedPrinter.assetNumber || selectedPrinter.serialNumber} - ${selectedPrinter.assignedTo || "Unassigned"}${printerDevice?.modelNumber ? ` (${printerDevice.modelNumber})` : ""}` : undefined,
         quantity: parseInt(formData.quantity),
         supplier: formData.supplier,
         receivedDate: formData.receivedDate,
+        receivedBy: formData.receivedBy || undefined,
         notes: formData.notes || undefined,
       }
 
@@ -129,6 +140,7 @@ export default function ReceiveItemsPage() {
           quantity: "",
           supplier: "",
           receivedDate: new Date().toISOString().split("T")[0],
+          receivedBy: "",
           notes: "",
         })
       }
@@ -165,6 +177,7 @@ export default function ReceiveItemsPage() {
       item.tonerModel?.toLowerCase().includes(searchLower) ||
       item.supplier.toLowerCase().includes(searchLower) ||
       item.printerName?.toLowerCase().includes(searchLower) ||
+      item.receivedBy?.toLowerCase().includes(searchLower) ||
       item.notes?.toLowerCase().includes(searchLower)
     )
   })
@@ -275,16 +288,56 @@ export default function ReceiveItemsPage() {
                 <>
                   <div className="flex flex-col gap-1 w-full">
                     <Label htmlFor="tonerModel">Toner Model *</Label>
-                    <Input
-                      id="tonerModel"
-                      value={formData.tonerModel}
-                      onChange={(e) => handleChange("tonerModel", e.target.value)}
-                      placeholder="Enter toner model (e.g., HP 85A, Canon 303)"
-                      required
-                    />
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Type the toner model name (e.g., HP 85A, Canon 303, Brother TN-630)
-                    </p>
+                    {availableToners.length === 0 ? (
+                      <>
+                        <Input
+                          id="tonerModel"
+                          value={formData.tonerModel}
+                          onChange={(e) => handleChange("tonerModel", e.target.value)}
+                          placeholder="No toners in stock. Add toners in Stock page first."
+                          disabled
+                        />
+                        <p className="text-xs text-red-600 mt-1">
+                          No toners available. Please add toner stock entries in the Toner Stock page first.
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        <Select
+                          value={availableToners.find(t => t.model === formData.tonerModel)?.id || ""}
+                          onValueChange={(value) => {
+                            const selectedToner = availableToners.find(t => t.id === value)
+                            if (selectedToner) {
+                              handleChange("tonerModel", selectedToner.model)
+                              handleChange("printerId", selectedToner.printerId || "none")
+                              // Set toner type and color based on selected toner
+                              if (selectedToner.color) {
+                                handleChange("tonerType", "Color")
+                                handleChange("tonerColor", selectedToner.color)
+                              } else {
+                                handleChange("tonerType", "Black & White")
+                                handleChange("tonerColor", "")
+                              }
+                            }
+                          }}
+                          required
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select toner from stock" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {availableToners.map((toner) => (
+                              <SelectItem key={toner.id} value={toner.id}>
+                                {toner.displayName}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Select a toner from existing stock entries
+                        </p>
+                      </>
+                    )}
                   </div>
                   <div className="flex flex-col gap-1 w-full">
                     <Label htmlFor="tonerType">Toner Type *</Label>
@@ -324,16 +377,16 @@ export default function ReceiveItemsPage() {
                     </div>
                   )}
                   <div className="flex flex-col gap-1 w-full">
-                    <Label htmlFor="printerId">Assigned Printer *</Label>
+                    <Label htmlFor="printerId">Assigned Printer (Optional)</Label>
                     <Select
-                      value={formData.printerId}
-                      onValueChange={(value) => handleChange("printerId", value)}
-                      required
+                      value={formData.printerId || "none"}
+                      onValueChange={(value) => handleChange("printerId", value === "none" ? "" : value)}
                     >
                       <SelectTrigger>
-                        <SelectValue placeholder="Select printer from assets" />
+                        <SelectValue placeholder="Select printer (optional - can assign when issuing)" />
                       </SelectTrigger>
                       <SelectContent>
+                        <SelectItem value="none">None (Assign when issuing)</SelectItem>
                         {printers.length === 0 ? (
                           <SelectItem value="" disabled>No printers found in assets</SelectItem>
                         ) : (
@@ -346,7 +399,7 @@ export default function ReceiveItemsPage() {
                       </SelectContent>
                     </Select>
                     <p className="text-xs text-muted-foreground mt-1">
-                      Select printer from asset database
+                      Optional: You can assign the printer when issuing to a user. Stock will be updated automatically.
                     </p>
                   </div>
                 </>
@@ -384,6 +437,16 @@ export default function ReceiveItemsPage() {
                   value={formData.receivedDate}
                   onChange={(e) => handleChange("receivedDate", e.target.value)}
                   required
+                />
+              </div>
+
+              <div className="flex flex-col gap-1 w-full">
+                <Label htmlFor="receivedBy">Received By</Label>
+                <Input
+                  id="receivedBy"
+                  value={formData.receivedBy}
+                  onChange={(e) => handleChange("receivedBy", e.target.value)}
+                  placeholder="Enter name of person who received items"
                 />
               </div>
 
@@ -469,6 +532,7 @@ export default function ReceiveItemsPage() {
                       <TableHead className="border-r border-dashed border-gray-200 font-semibold">Supplier</TableHead>
                       <TableHead className="border-r border-dashed border-gray-200 font-semibold">Printer</TableHead>
                       <TableHead className="border-r border-dashed border-gray-200 font-semibold">Received Date</TableHead>
+                      <TableHead className="border-r border-dashed border-gray-200 font-semibold">Received By</TableHead>
                       <TableHead className="border-r border-dashed border-gray-200 font-semibold">Notes</TableHead>
                       <TableHead className="font-semibold text-center w-[50px]">Actions</TableHead>
                     </TableRow>
@@ -514,6 +578,9 @@ export default function ReceiveItemsPage() {
                         <TableCell className="border-r border-dashed border-gray-200">
                           <span className="text-sm">{formatDate(item.receivedDate)}</span>
                         </TableCell>
+                        <TableCell className="border-r border-dashed border-gray-200">
+                          <span className="text-sm font-medium">{item.receivedBy || "—"}</span>
+                        </TableCell>
                         <TableCell>
                           <span className="text-sm text-gray-600">{item.notes || "—"}</span>
                         </TableCell>
@@ -544,6 +611,7 @@ export default function ReceiveItemsPage() {
                                   quantity: item.quantity.toString(),
                                   supplier: item.supplier,
                                   receivedDate: item.receivedDate,
+                                  receivedBy: item.receivedBy || "",
                                   notes: item.notes || "",
                                 })
                                 setDialogOpen(true)

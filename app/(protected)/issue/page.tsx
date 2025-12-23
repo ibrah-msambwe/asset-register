@@ -24,9 +24,22 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 
 export default function IssueItemsPage() {
   const router = useRouter()
-  const { addIssuedItem, getTonerStockByModel, getEligibleUsersForItem, getPrinters, issuedItems, updateIssuedItem, deleteIssuedItem } = useInventory()
+  const { addIssuedItem, getTonerStockByModel, getEligibleUsersForItem, getPrinters, issuedItems, updateIssuedItem, deleteIssuedItem, tonerStock } = useInventory()
   const { devices } = useDevices()
   const printers = getPrinters()
+  
+  // Get available toners from stock for dropdown (only unique models)
+  const availableToners = Array.from(
+    new Map(tonerStock.map((stock) => [stock.model.toLowerCase(), stock])).values()
+  ).map((stock) => ({
+    id: stock.id,
+    model: stock.model,
+    color: stock.color,
+    printerId: stock.printerId,
+    printerName: stock.printerName,
+    displayName: `${stock.model}${stock.color ? ` (${stock.color})` : ""}${stock.printerName ? ` - ${stock.printerName}` : ""}`,
+  }))
+  
   const [loading, setLoading] = useState(false)
   const [searchTerm, setSearchTerm] = useState("")
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -63,16 +76,15 @@ export default function IssueItemsPage() {
 
   useEffect(() => {
     if (formData.itemType === "Toner" && formData.tonerModel) {
+      // Find stock by model only (model is unique, allows multiple assignments to different printers)
       const stock = getTonerStockByModel(
-        formData.tonerModel as TonerModel,
-        formData.tonerColor as TonerColor | undefined,
-        formData.printerId || undefined
+        formData.tonerModel as TonerModel
       )
       setStockAvailable(stock?.currentStock || 0)
     } else {
       setStockAvailable(null)
     }
-  }, [formData.itemType, formData.tonerModel, formData.tonerColor, formData.printerId, getTonerStockByModel])
+  }, [formData.itemType, formData.tonerModel, getTonerStockByModel])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -115,13 +127,15 @@ export default function IssueItemsPage() {
         setLoading(false)
         return
       }
+      // Check stock availability by model only (ignores printer assignment in stock)
+      // Same toner model can be issued to any printer/user
       if (stockAvailable === null || stockAvailable === 0) {
-        setFormError(`No stock available for ${formData.tonerModel} ${formData.tonerColor ? `(${formData.tonerColor})` : ""} for the selected printer. Please receive stock first.`)
+        setFormError(`No stock available for ${formData.tonerModel}${formData.tonerColor ? ` (${formData.tonerColor})` : ""}. Please receive stock first.`)
         setLoading(false)
         return
       }
       if (parseInt(formData.quantity) > stockAvailable) {
-        setFormError(`Insufficient stock. Only ${stockAvailable} units available for ${formData.tonerModel} ${formData.tonerColor ? `(${formData.tonerColor})` : ""} for the selected printer.`)
+        setFormError(`Insufficient stock. Only ${stockAvailable} units available for ${formData.tonerModel}${formData.tonerColor ? ` (${formData.tonerColor})` : ""}.`)
         setLoading(false)
         return
       }
@@ -363,16 +377,54 @@ export default function IssueItemsPage() {
                 <>
                   <div className="flex flex-col gap-1 w-full">
                     <Label htmlFor="tonerModel">Toner Model *</Label>
-                    <Input
-                      id="tonerModel"
-                      value={formData.tonerModel}
-                      onChange={(e) => handleChange("tonerModel", e.target.value)}
-                      placeholder="Enter toner model (e.g., HP 85A, Canon 303)"
-                      required
-                    />
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Type the toner model name to match received stock
-                    </p>
+                    {availableToners.length === 0 ? (
+                      <>
+                        <Input
+                          id="tonerModel"
+                          value={formData.tonerModel}
+                          placeholder="No toners in stock. Add toners in Stock page first."
+                          disabled
+                        />
+                        <p className="text-xs text-red-600 mt-1">
+                          No toners available. Please add toner stock entries in the Toner Stock page first.
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        <Select
+                          value={availableToners.find(t => t.model === formData.tonerModel)?.id || ""}
+                          onValueChange={(value) => {
+                            const selectedToner = availableToners.find(t => t.id === value)
+                            if (selectedToner) {
+                              handleChange("tonerModel", selectedToner.model)
+                              // Set toner type and color based on selected toner
+                              if (selectedToner.color) {
+                                handleChange("tonerType", "Color")
+                                handleChange("tonerColor", selectedToner.color)
+                              } else {
+                                handleChange("tonerType", "Black & White")
+                                handleChange("tonerColor", "")
+                              }
+                            }
+                          }}
+                          required
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select toner from stock" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {availableToners.map((toner) => (
+                              <SelectItem key={toner.id} value={toner.id}>
+                                {toner.displayName}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Select a toner from existing stock entries
+                        </p>
+                      </>
+                    )}
                   </div>
                   <div className="flex flex-col gap-1 w-full">
                     <Label htmlFor="tonerType">Toner Type *</Label>
@@ -437,17 +489,17 @@ export default function IssueItemsPage() {
                       Select printer from asset database. User will be auto-filled.
                     </p>
                   </div>
-                  {formData.printerId && formData.tonerModel && (
+                  {formData.tonerModel && (
                     <div className="flex flex-col gap-1 w-full">
                       {stockAvailable !== null && stockAvailable !== undefined ? (
                         <p className={`text-xs font-semibold ${stockAvailable === 0 ? "text-red-600" : stockAvailable <= 5 ? "text-orange-600" : "text-green-600"}`}>
                           Available stock: {stockAvailable} units
-                          {stockAvailable === 0 && " - No stock available for this printer!"}
+                          {stockAvailable === 0 && " - No stock available for this toner model!"}
                           {stockAvailable > 0 && stockAvailable <= 5 && " - Low stock warning"}
                         </p>
                       ) : (
                         <p className="text-xs text-red-600 font-semibold">
-                          No stock found for this toner model and printer combination. Please receive stock first.
+                          No stock found for this toner model. Please receive stock first.
                         </p>
                       )}
                     </div>

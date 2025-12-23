@@ -21,6 +21,7 @@ export interface ReceivedItem {
   quantity: number
   supplier: string
   receivedDate: string
+  receivedBy?: string
   notes?: string
   createdAt?: string
 }
@@ -66,6 +67,7 @@ interface InventoryContextType {
   deleteReceivedItem: (id: string) => Promise<void>
   deleteIssuedItem: (id: string) => Promise<void>
   deleteTonerStock: (id: string) => Promise<void>
+  createTonerStockEntry: (model: TonerModel, color?: TonerColor, printerId?: string, lowStockThreshold?: number) => Promise<void>
   updateTonerStock: (model: TonerModel, quantity: number, color?: TonerColor, printerId?: string) => Promise<void>
   updateTonerStockEntry: (id: string, updates: Partial<TonerStock>) => Promise<void>
   getTonerStockByModel: (model: TonerModel, color?: TonerColor, printerId?: string) => TonerStock | undefined
@@ -183,7 +185,7 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
 
       if (receivedData) {
         setReceivedItems(
-          receivedData.map((item) => ({
+          receivedData.map((item: any) => ({
             id: item.id,
             itemType: item.item_type as ItemType,
             tonerModel: item.toner_model as TonerModel | undefined,
@@ -194,6 +196,7 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
             quantity: item.quantity,
             supplier: item.supplier,
             receivedDate: item.received_date,
+            receivedBy: item.received_by || undefined, // Will be undefined if column doesn't exist
             notes: item.notes || undefined,
             createdAt: item.created_at,
           }))
@@ -257,8 +260,9 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
 
     setReceivedItems((prev) => [newItem, ...prev])
 
-    // Update stock when receiving toners - track by model, color, and printer
-    if (item.itemType === "Toner" && item.tonerModel && item.printerId) {
+    // Update stock automatically when receiving toners (by model only - allows multiple assignments)
+    // Stock is tracked by model only, so receiving updates the single stock entry for that model
+    if (item.itemType === "Toner" && item.tonerModel) {
       await updateTonerStock(item.tonerModel as TonerModel, item.quantity, item.tonerColor, item.printerId)
     }
 
@@ -268,7 +272,9 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
 
     try {
       const supabase = createSupabaseClient()
-      const { error } = await supabase.from("received_items").insert({
+      
+      // Build insert object, conditionally including received_by if it exists in the schema
+      const insertData: any = {
         item_type: item.itemType,
         toner_model: item.tonerModel || null,
         toner_color: item.tonerColor || null,
@@ -279,15 +285,36 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
         supplier: item.supplier,
         received_date: item.receivedDate,
         notes: item.notes || null,
-      })
+      }
+      
+      // Only include received_by if it's provided (will fail gracefully if column doesn't exist)
+      if (item.receivedBy !== undefined) {
+        insertData.received_by = item.receivedBy || null
+      }
+      
+      const { error, data } = await supabase.from("received_items").insert(insertData)
 
-      if (error) throw error
+      if (error) {
+        console.error("Supabase error details:", {
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+          code: error.code
+        })
+        throw error
+      }
       
       // Refresh inventory after successful insert
       await refreshInventory()
     } catch (err: any) {
       console.error("Error adding received item:", err)
-      setError(err.message || "Failed to add received item")
+      const errorMessage = err?.message || err?.details || err?.hint || JSON.stringify(err) || "Failed to add received item"
+      setError(errorMessage)
+      
+      // If it's a column doesn't exist error, provide helpful message
+      if (err?.code === "42703" || err?.message?.includes("column") || err?.message?.includes("does not exist")) {
+        setError("Database column 'received_by' does not exist. Please run the migration: ALTER TABLE received_items ADD COLUMN received_by VARCHAR(255);")
+      }
     }
   }
 
@@ -299,13 +326,21 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
 
     setIssuedItems((prev) => [newItem, ...prev])
 
-    // Deduct from stock when issuing toners - must match model, color, and printer
-    if (item.itemType === "Toner" && item.tonerModel && item.printerId) {
-      const currentStock = getTonerStockByModel(item.tonerModel as TonerModel, item.tonerColor, item.printerId)
-      if (currentStock && currentStock.currentStock > 0) {
+    // Deduct from stock when issuing toners - find by model only (ignores printer assignment)
+    // One toner model can be issued to multiple users/printers regardless of stock's printer assignment
+    if (item.itemType === "Toner" && item.tonerModel) {
+      const currentStock = getTonerStockByModel(item.tonerModel as TonerModel)
+      if (currentStock) {
+        // Check if there's enough stock
+        if (currentStock.currentStock < item.quantity) {
+          throw new Error(`Insufficient stock. Only ${currentStock.currentStock} units available for ${item.tonerModel}.`)
+        }
+        // Deduct from stock (model-only, allows multiple assignments to different users/printers)
+        // Printer assignment in stock doesn't matter - any printer can be issued this toner model
         await updateTonerStock(item.tonerModel as TonerModel, -item.quantity, item.tonerColor, item.printerId)
       } else {
-        console.warn(`No stock found for ${item.tonerModel} ${item.tonerColor || ""} for printer ${item.printerId}`)
+        console.warn(`No stock found for ${item.tonerModel}`)
+        throw new Error(`No stock entry found for toner model: ${item.tonerModel}. Please add this toner to stock first.`)
       }
     }
 
@@ -350,27 +385,49 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
 
     try {
       const supabase = createSupabaseClient()
+      
+      // Build update object, conditionally including received_by if it exists in the schema
+      const updateData: any = {}
+      if (updates.itemType !== undefined) updateData.item_type = updates.itemType
+      if (updates.tonerModel !== undefined) updateData.toner_model = updates.tonerModel || null
+      if (updates.tonerColor !== undefined) updateData.toner_color = updates.tonerColor || null
+      if (updates.tonerType !== undefined) updateData.toner_type = updates.tonerType || null
+      if (updates.printerId !== undefined) updateData.printer_id = updates.printerId || null
+      if (updates.printerName !== undefined) updateData.printer_name = updates.printerName || null
+      if (updates.quantity !== undefined) updateData.quantity = updates.quantity
+      if (updates.supplier !== undefined) updateData.supplier = updates.supplier
+      if (updates.receivedDate !== undefined) updateData.received_date = updates.receivedDate
+      if (updates.notes !== undefined) updateData.notes = updates.notes || null
+      
+      // Only include received_by if it's provided (will fail gracefully if column doesn't exist)
+      if (updates.receivedBy !== undefined) {
+        updateData.received_by = updates.receivedBy || null
+      }
+      
       const { error } = await supabase
         .from("received_items")
-        .update({
-          item_type: updates.itemType || undefined,
-          toner_model: updates.tonerModel || null,
-          toner_color: updates.tonerColor || null,
-          toner_type: updates.tonerType || null,
-          printer_id: updates.printerId || null,
-          printer_name: updates.printerName || null,
-          quantity: updates.quantity || undefined,
-          supplier: updates.supplier || undefined,
-          received_date: updates.receivedDate || undefined,
-          notes: updates.notes || null,
-        })
+        .update(updateData)
         .eq("id", id)
 
-      if (error) throw error
+      if (error) {
+        console.error("Supabase update error details:", {
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+          code: error.code
+        })
+        throw error
+      }
       await refreshInventory()
     } catch (err: any) {
       console.error("Error updating received item:", err)
-      setError(err.message || "Failed to update received item")
+      const errorMessage = err?.message || err?.details || err?.hint || JSON.stringify(err) || "Failed to update received item"
+      setError(errorMessage)
+      
+      // If it's a column doesn't exist error, provide helpful message
+      if (err?.code === "42703" || err?.message?.includes("column") || err?.message?.includes("does not exist")) {
+        setError("Database column 'received_by' does not exist. Please run the migration: ALTER TABLE received_items ADD COLUMN received_by VARCHAR(255);")
+      }
     }
   }
 
@@ -439,8 +496,8 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
   const deleteIssuedItem = async (id: string) => {
     const item = issuedItems.find((i) => i.id === id)
     
-    // If it's a toner, we need to restore stock
-    if (item && item.itemType === "Toner" && item.tonerModel && item.printerId) {
+    // If it's a toner, we need to restore stock (model-only, allows multiple assignments)
+    if (item && item.itemType === "Toner" && item.tonerModel) {
       await updateTonerStock(item.tonerModel as TonerModel, item.quantity, item.tonerColor, item.printerId)
     }
 
@@ -478,6 +535,59 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
     } catch (err: any) {
       console.error("Error deleting toner stock:", err)
       setError(err.message || "Failed to delete toner stock")
+    }
+  }
+
+  const createTonerStockEntry = async (model: TonerModel, color?: TonerColor, printerId?: string, lowStockThreshold: number = 5) => {
+    // Check if stock entry already exists for this model (model must be unique)
+    const normalizedModel = typeof model === 'string' ? model.trim() : model
+    const existingStock = tonerStock.find((stock) => 
+      stock.model.toLowerCase() === normalizedModel.toLowerCase()
+    )
+    if (existingStock) {
+      throw new Error(`Stock entry already exists for toner model: ${model}. Each toner model can only have one stock entry.`)
+    }
+
+    const printer = printerId ? devices.find((d) => d.id === printerId) : undefined
+    const printerName = printer ? `${printer.assetNumber || printer.serialNumber} - ${printer.assignedTo || "Unassigned"}${printer.modelNumber ? ` (${printer.modelNumber})` : ""}` : undefined
+
+    const newStock: TonerStock = {
+      id: Date.now().toString(),
+      model: model,
+      color,
+      printerId,
+      printerName,
+      currentStock: 0, // Start with 0 quantity
+      lowStockThreshold,
+      lastUpdated: new Date().toISOString().split("T")[0],
+    }
+
+    setTonerStock((prev) => [...prev, newStock])
+
+    if (!isSupabaseConfigured() || isUsingMockData) {
+      return
+    }
+
+    try {
+      const supabase = createSupabaseClient()
+      const { error } = await supabase.from("toner_stock").insert({
+        model: model,
+        color: color || null,
+        printer_id: printerId || null,
+        printer_name: printerName || null,
+        current_stock: 0,
+        low_stock_threshold: lowStockThreshold,
+        last_updated: newStock.lastUpdated,
+      })
+
+      if (error) throw error
+      await refreshInventory()
+    } catch (err: any) {
+      console.error("Error creating toner stock entry:", err)
+      setError(err.message || "Failed to create toner stock entry")
+      // Revert local state on error
+      setTonerStock((prev) => prev.filter((stock) => stock.id !== newStock.id))
+      throw err
     }
   }
 
@@ -557,18 +667,11 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
       lastUpdated: new Date().toISOString().split("T")[0],
     }
 
+    // Update existing stock entry (model must be unique)
     setTonerStock((prev) => {
-      const filtered = prev.filter((s) => {
-        // Remove stock entries that match this exact combination
-        if (s.model.toLowerCase() !== normalizedModel.toLowerCase()) return true
-        if (color && s.color !== color) return true
-        if (!color && s.color) return true
-        if (printerId && s.printerId !== printerId) return true
-        if (printerId && !s.printerId) return true
-        if (!printerId && s.printerId) return true
-        return false
-      })
-      return [...filtered, updatedStock]
+      return prev.map((stock) => 
+        stock.model.toLowerCase() === normalizedModel.toLowerCase() ? updatedStock : stock
+      )
     })
 
     if (!isSupabaseConfigured() || isUsingMockData) {
@@ -579,19 +682,19 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
       const supabase = createSupabaseClient()
       
       // Use upsert to handle both insert and update cases
-      // This handles the unique constraint on (model, color, printer_id)
+      // Now with model-only uniqueness
       const { error } = await supabase
         .from("toner_stock")
         .upsert({
           model: normalizedModel,
-          color: color || null,
-          printer_id: printerId || null,
-          printer_name: updatedStock.printerName || null,
+          color: existingStock?.color || color || null,
+          printer_id: existingStock?.printerId || printerId || null,
+          printer_name: existingStock?.printerName || updatedStock.printerName || null,
           current_stock: Math.max(0, newStock),
           low_stock_threshold: existingStock?.lowStockThreshold || 5,
           last_updated: updatedStock.lastUpdated,
         }, {
-          onConflict: 'model,color,printer_id'
+          onConflict: 'model'
         })
 
       if (error) throw error
@@ -605,22 +708,11 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
   }
 
   const getTonerStockByModel = (model: TonerModel | string, color?: TonerColor, printerId?: string): TonerStock | undefined => {
+    // Find stock by model only (model must be unique, ignore color and printer)
     const normalizedModel = typeof model === 'string' ? model.trim() : model
-    return tonerStock.find((stock) => {
-      // Case-insensitive model matching
-      if (stock.model.toLowerCase() !== normalizedModel.toLowerCase()) return false
-      // Color must match exactly if specified
-      if (color && stock.color !== color) return false
-      // If color is specified but stock has no color, don't match
-      if (color && !stock.color) return false
-      // Printer must match exactly if specified - this is critical
-      if (printerId && stock.printerId !== printerId) return false
-      // If printerId is specified but stock doesn't have one, don't match
-      if (printerId && !stock.printerId) return false
-      // If no printerId specified, only match stocks without printer assignment
-      if (!printerId && stock.printerId) return false
-      return true
-    })
+    return tonerStock.find((stock) => 
+      stock.model.toLowerCase() === normalizedModel.toLowerCase()
+    )
   }
 
   const getLowStockToners = (): TonerStock[] => {
@@ -671,6 +763,7 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
         deleteReceivedItem,
         deleteIssuedItem,
         deleteTonerStock,
+        createTonerStockEntry,
         updateTonerStock,
         updateTonerStockEntry,
         getTonerStockByModel,
